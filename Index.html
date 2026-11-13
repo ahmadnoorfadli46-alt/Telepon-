@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Voice Call</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: white; }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div class="bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md text-center border border-slate-700">
+        <h2 class="text-2xl font-bold mb-2 text-indigo-400">📞 PrivCall 1-on-1</h2>
+        <p id="status" class="text-sm text-slate-400 mb-6">Menghubungkan ke server PeerJS...</p>
+
+        <!-- Bagian ID Sendiri -->
+        <div class="bg-slate-900 p-4 rounded-lg mb-6 border border-slate-700">
+            <p class="text-xs text-slate-400 mb-1">ID RUANGAN LU (Kasih ke teman):</p>
+            <p id="my-id" class="text-xl font-mono font-bold text-green-400 tracking-wider">Memuat...</p>
+        </div>
+
+        <!-- Bagian Input ID Teman -->
+        <div class="mb-6">
+            <label class="block text-xs text-slate-400 mb-2 text-left">GABUNG KE TEMAN (Masukkan ID):</label>
+            <input type="text" id="friend-id" placeholder="Contoh: 8a7b6c..." 
+                class="w-full p-3 rounded-lg bg-slate-900 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono">
+        </div>
+
+        <!-- Tombol Kontrol -->
+        <div class="flex gap-3">
+            <button id="call-btn" disabled 
+                class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition opacity-50 cursor-not-allowed">
+                Mulai Nelpon
+            </button>
+            <button id="end-btn" disabled 
+                class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition hidden">
+                Tutup Telepon
+            </button>
+        </div>
+
+        <audio id="remote-audio" autoplay></audio>
+    </div>
+
+    <script>
+        let localStream;
+        let peer;
+        let currentCall;
+
+        const myIdDisplay = document.getElementById('my-id');
+        const friendIdInput = document.getElementById('friend-id');
+        const callBtn = document.getElementById('call-btn');
+        const endBtn = document.getElementById('end-btn');
+        const statusText = document.getElementById('status');
+        const remoteAudio = document.getElementById('remote-audio');
+
+        // 1. Inisialisasi PeerJS (Otomatis dapat ID unik dari server gratis PeerJS)
+        peer = new Peer();
+
+        peer.on('open', (id) => {
+            myIdDisplay.innerText = id;
+            statusText.innerText = "Siap digunakan. Izinkan akses mikrofon!";
+            
+            // 2. Minta izin akses mikrofon setelah terhubung ke PeerJS
+            navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+            .then((stream) => {
+                localStream = stream;
+                statusText.innerText = "Mikrofon aktif. Siap menelpon!";
+                statusText.className = "text-sm text-green-400 mb-6";
+                callBtn.disabled = false;
+                callBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            })
+            .catch((err) => {
+                statusText.innerText = "Gagal akses mikrofon. Cek izin browser!";
+                statusText.className = "text-sm text-red-400 mb-6";
+                console.error(err);
+            });
+        });
+
+        // 3. Jika ada teman yang menelpon ke ID kita
+        peer.on('call', (call) => {
+            if (currentCall) {
+                // Tolak jika sedang dalam panggilan (batas 1 on 1)
+                call.close();
+                return;
+            }
+            
+            statusText.innerText = "Panggilan masuk... Terhubung otomatis!";
+            call.answer(localStream); // Langsung angkat pakai mikrofon kita
+            setupCallEvents(call);
+        });
+
+        // 4. Jika kita menekan tombol Nelpon
+        callBtn.onclick = () => {
+            const friendId = friendIdInput.value.trim();
+            if (!friendId) return alert('Masukkan ID ruangan teman lu dulu!');
+
+            statusText.innerText = "Menghubungkan ke " + friendId + "...";
+            const call = peer.call(friendId, localStream);
+            setupCallEvents(call);
+        };
+
+        // 5. Fungsi untuk mengatur tombol dan suara saat tersambung
+        function setupCallEvents(call) {
+            currentCall = call;
+            
+            call.on('stream', (remoteStream) => {
+                remoteAudio.srcObject = remoteStream; // Putar suara teman
+                statusText.innerText = "📞 Sedang dalam panggilan!";
+                statusText.className = "text-sm text-indigo-400 font-bold mb-6";
+                
+                callBtn.classList.add('hidden');
+                endBtn.classList.remove('hidden');
+                endBtn.disabled = false;
+            });
+
+            call.on('close', () => {
+                endCallUI();
+            });
+        }
+
+        // 6. Tombol Tutup Telepon
+        endBtn.onclick = () => {
+            if (currentCall) currentCall.close();
+            endCallUI();
+        };
+
+        function endCallUI() {
+            currentCall = null;
+            remoteAudio.srcObject = null;
+            statusText.innerText = "Panggilan diakhiri. Siap menelpon lagi.";
+            statusText.className = "text-sm text-slate-400 mb-6";
+            
+            endBtn.classList.add('hidden');
+            callBtn.classList.remove('hidden');
+            friendIdInput.value = '';
+        }
+    </script>
+</body>
+</html>
